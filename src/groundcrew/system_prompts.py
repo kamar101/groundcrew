@@ -56,6 +56,7 @@ Instructions:
 - `user_prompt` should be excluded when generating the description.
 
 Restrictions:
+- DO NOT enclose your answer in TRIPLE BACKTICKS
 - Do not include ```yaml in your answer
 - Do not engage in any conversation.
 - Do not include ```yaml in your answer
@@ -63,6 +64,10 @@ Restrictions:
 - Do not include anything that isn't valid YAML in your answer
 - Do not include backticks in your answer
 - Do not include ```yaml in your answer
+
+Consider:
+- The results will be passed to the yaml.safe_load function in Python, so make sure your output is valid YAML.
+
 
 ### Example Input ###
 class ToolExample(Tool):

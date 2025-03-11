@@ -6,7 +6,7 @@ import ast
 import inspect
 import importlib
 
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
 import yaml
 import astunparse
@@ -18,7 +18,7 @@ from pygments.lexers import PythonLexer
 from pygments.formatters import Terminal256Formatter
 
 from groundcrew import constants, system_prompts as sp
-from groundcrew.llm import openaiapi
+from groundcrew.llm import ollama_api, openaiapi
 from groundcrew.llm.openaiapi import Message
 from groundcrew.dataclasses import Tool
 
@@ -80,10 +80,12 @@ def build_llm_chat_client(
     if 'gpt' in model:
         client = openaiapi.get_openaiai_client()
         chat_session = openaiapi.start_chat(model, client)
+    else:
+        client = ollama_api.get_ollama_client()
+        chat_session = ollama_api.start_chat(model, client)
 
         def chat(messages: list[Message]) -> Message:
             return chat_session(messages)
-
     return chat
 
 
@@ -93,9 +95,21 @@ def build_llm_completion_client(
     if 'gpt' in model:
         client = openaiapi.get_openaiai_client()
         completion = openaiapi.start_chat(model, client)
+    else:
+        client = ollama_api.get_ollama_client()
+        completion = ollama_api.start_chat(model, client)
+        local_model = True
 
         def chat_complete(prompt):
             try:
+                if local_model:
+                    messages = [
+                        ollama_api.SystemMessage(
+                            "You are a helpful assistant."),
+                        ollama_api.UserMessage(prompt)
+                    ]
+                    response = completion(messages)
+                    return response.content
                 messages = [
                     openaiapi.SystemMessage("You are a helpful assistant."),
                     openaiapi.UserMessage(prompt)

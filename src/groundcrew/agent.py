@@ -12,7 +12,8 @@ from chromadb import Collection
 
 from groundcrew import agent_utils as autils, system_prompts as sp, utils
 from groundcrew.dataclasses import Colors, Config, Tool
-from groundcrew.llm.openaiapi import SystemMessage, UserMessage, AssistantMessage, Message
+# from groundcrew.llm.openaiapi import SystemMessage, UserMessage, AssistantMessage, Message
+from groundcrew.llm.ollama_api import SystemMessage, UserMessage, AssistantMessage, Message
 
 
 class Agent:
@@ -32,6 +33,7 @@ class Agent:
         dispatch(user_prompt): Analyze the user prompt and select the
         appropriate tool for response or respond directly if appropriate.
     """
+
     def __init__(
             self,
             config: Config,
@@ -227,8 +229,7 @@ class Agent:
             select_tool_response = self.llm(
                 [SystemMessage(system_prompt)] +
                 self.messages +
-                self.dispatch_messages
-            )
+                self.dispatch_messages)
 
             # Add response to the dispatch messages as an assistant message
             self.dispatch_messages.append(select_tool_response)
