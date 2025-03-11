@@ -30,7 +30,7 @@ CHOOSE_TOOL_PROMPT = """Your task is to address a question or command from a use
 (1) If you are choosing the correct Tool and parameters, use the following format. Do not use references to parameter values, you must put the value being passed in the Parameter value section. If passing in code, do not include backticks.
 Reason: Describe your reasoning for why this tool was chosen in 3 sentences or less.
 Tool: Tool Name
-Tool query: Provide a query to the Tool to get the answer to the question.
+Tool query: Provide a query to the Tool to get the answer to the question. (All tools require a query)
 Parameter_0: Parameter_0 Name | Parameter value | parameter type
 ...
 Parameter_N: Parameter_N Name | Parameter value | parameter type

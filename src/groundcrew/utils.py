@@ -84,14 +84,15 @@ def build_llm_chat_client(
         client = ollama_api.get_ollama_client()
         chat_session = ollama_api.start_chat(model, client)
 
-        def chat(messages: list[Message]) -> Message:
-            return chat_session(messages)
+    def chat(messages: list[Message]) -> Message:
+        return chat_session(messages)
     return chat
 
 
 def build_llm_completion_client(
         model: str = constants.DEFAULT_MODEL) -> Callable[[str], str]:
     """Make an LLM client that accepts a string prompt and returns a response."""
+    local_model = False
     if 'gpt' in model:
         client = openaiapi.get_openaiai_client()
         completion = openaiapi.start_chat(model, client)
@@ -100,24 +101,24 @@ def build_llm_completion_client(
         completion = ollama_api.start_chat(model, client)
         local_model = True
 
-        def chat_complete(prompt):
-            try:
-                if local_model:
-                    messages = [
-                        ollama_api.SystemMessage(
-                            "You are a helpful assistant."),
-                        ollama_api.UserMessage(prompt)
-                    ]
-                    response = completion(messages)
-                    return response.content
+    def chat_complete(prompt):
+        try:
+            if local_model:
                 messages = [
-                    openaiapi.SystemMessage("You are a helpful assistant."),
-                    openaiapi.UserMessage(prompt)
+                    ollama_api.SystemMessage(
+                        "You are a helpful assistant."),
+                    ollama_api.UserMessage(prompt)
                 ]
                 response = completion(messages)
                 return response.content
-            except Exception:
-                return ''
+            messages = [
+                openaiapi.SystemMessage("You are a helpful assistant."),
+                openaiapi.UserMessage(prompt)
+            ]
+            response = completion(messages)
+            return response.content
+        except Exception:
+            return ''
 
     return chat_complete
 

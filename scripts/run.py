@@ -175,6 +175,8 @@ def main(config: str, model: str, prompts_file: str | None):
         config (str): Path to the config yaml file
         model (str): The name of the LLM model to use
     """
+    print('Running GroundCrew...')
+    print('Using model:', model)
 
     with open(config, 'r') as f:
         config = yaml.safe_load(f)
