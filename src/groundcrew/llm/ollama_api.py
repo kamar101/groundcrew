@@ -7,45 +7,11 @@ functions to interact with the Ollama client.
 """
 
 from typing import Callable, Iterable, List, Union
-from dataclasses import dataclass
+from groundcrew.dataclasses import SystemMessage, UserMessage, AssistantMessage, ToolMessage, ToolCall
 import json
 
 # Assume an 'ollama' package exists that provides a client interface similar to OpenAI.
 import ollama
-
-
-@dataclass(frozen=True)
-class ToolCall:
-    tool_call_id: str
-    tool_type: str
-    function_name: str
-    function_args: dict
-
-
-@dataclass(frozen=True)
-class SystemMessage:
-    content: str
-    role: str = 'system'
-
-
-@dataclass(frozen=True)
-class UserMessage:
-    content: str
-    role: str = 'user'
-
-
-@dataclass(frozen=True)
-class AssistantMessage:
-    content: str
-    tool_calls: List[ToolCall] | None = None
-    role: str = 'assistant'
-
-
-@dataclass(frozen=True)
-class ToolMessage:
-    content: Union[str, None]
-    tool_call_id: str
-    role: str = 'tool'
 
 
 Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]
