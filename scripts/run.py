@@ -113,7 +113,8 @@ def summarize_file(
 
         # Extract classes and functions
         classes_dict = extract_python_from_file(file_text, CLASS_NODE_TYPE)
-        functions_dict = extract_python_from_file(file_text, FUNCTION_NODE_TYPE)
+        functions_dict = extract_python_from_file(
+            file_text, FUNCTION_NODE_TYPE)
 
         classes_dict = {k + ' (class)': v for k, v in classes_dict.items()}
 
@@ -174,6 +175,8 @@ def main(config: str, model: str, prompts_file: str | None):
         config (str): Path to the config yaml file
         model (str): The name of the LLM model to use
     """
+    print('Running GroundCrew...')
+    print('Using model:', model)
 
     with open(config, 'r') as f:
         config = yaml.safe_load(f)
@@ -186,7 +189,8 @@ def main(config: str, model: str, prompts_file: str | None):
     client = chromadb.PersistentClient(config.db_path)
 
     # Initialize the database and get a list of files in the repo
-    collection, files = init_db(client, os.path.expanduser(config.repository), config.extensions)
+    collection, files = init_db(client, os.path.expanduser(
+        config.repository), config.extensions)
     files = sorted(files)
 
     # LLM that takes a string as input and returns a string
@@ -206,7 +210,8 @@ def main(config: str, model: str, prompts_file: str | None):
 
     # Generate summaries for files, classes, and functions
     for i, filepath in enumerate(files):
-        summarize_file(filepath, os.path.expanduser(config.repository), llm, descriptions)
+        summarize_file(filepath, os.path.expanduser(
+            config.repository), llm, descriptions)
 
     # Save the descriptions to a file in the cache directory
     with open(descriptions_file, 'wb') as f:

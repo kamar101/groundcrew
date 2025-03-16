@@ -46,7 +46,7 @@ def query_codebase(
             end_line=metadata['end_line']
         ) for id_, metadata, doc in zip(
             out['ids'][0], out['metadatas'][0], out['documents'][0]
-            )
+        )
     ]
 
 
@@ -79,10 +79,10 @@ def get_paths(collection: Collection) -> dict[str, str]:
 
 
 def fuzzy_match_file_path(
-        collection: Collection,
-        search: str,
-        thresh: int
-    ) -> str | None:
+    collection: Collection,
+    search: str,
+    thresh: int
+) -> str | None:
     """Find a real file path in a collection given an example."""
 
     # there's a limited number of metadata filter options in chroma
@@ -158,7 +158,8 @@ class LintFileTool:
 
         try:
             command = ['ruff', 'check', '--preview',  filepath]
-            linter_output = subprocess.check_output(command, cwd=self.working_dir_path)
+            linter_output = subprocess.check_output(
+                command, cwd=self.working_dir_path)
         except subprocess.CalledProcessError as e:
             linter_output = e.output
 
@@ -188,6 +189,7 @@ def get_filename_from_id(id_: str):
 class SingleDocstringTool:
     """
     """
+
     def __init__(self, base_prompt: str, collection: Collection, llm: Callable):
         """
         Initialize the SingleDocstringTool with a base prompt, a code
@@ -332,6 +334,7 @@ class CodebaseQATool:
     model.  Inherits from ToolBase and implements the abstract methods for
     specific codebase querying functionality.
     """
+
     def __init__(self, base_prompt: str, collection: Collection, llm: Callable):
         """
         Initialize the CodebaseQATool with a base prompt, a code collection,
@@ -361,7 +364,6 @@ class CodebaseQATool:
             str: The generated response from the language model.
         """
         chunks = query_codebase(user_prompt, self.collection)
-
         prompt = ''
         for chunk in chunks:
             prompt += code.format_chunk(chunk, include_text=include_code)
@@ -377,24 +379,25 @@ class CyclomaticComplexityTool:
     """
     Tool for computing the cyclomatic complexity of a codebase.
     """
+
     def __init__(
-            self,
-            base_prompt: str,
-            collection: Collection,
-            llm: Callable,
-            min_max_complexity: int = 11
-        ):
+        self,
+        base_prompt: str,
+        collection: Collection,
+        llm: Callable,
+        min_max_complexity: int = 11
+    ):
         self.collection = collection
         self.llm = llm
         self.base_prompt = base_prompt
         self.min_max_complexity = min_max_complexity
 
     def __call__(
-            self,
-            user_prompt: str,
-            filepath_inexact: str = 'none',
-            sort_on: str = 'max'
-        ) -> str:
+        self,
+        user_prompt: str,
+        filepath_inexact: str = 'none',
+        sort_on: str = 'max'
+    ) -> str:
         """Answer questions using about the complex parts of a codebase.
         This method will create a summary of the most complex files to help answer
         the question.
@@ -407,7 +410,8 @@ class CyclomaticComplexityTool:
         """
 
         if filepath_inexact != 'none':
-            filepath = fuzzy_match_file_path(self.collection, filepath_inexact, 50)
+            filepath = fuzzy_match_file_path(
+                self.collection, filepath_inexact, 50)
 
             if filepath is None:
                 return f'Could not find a source file matching `{filepath_inexact}`'
@@ -448,8 +452,10 @@ class CyclomaticComplexityTool:
         if len(complexity_dict) == 0:
             average_complexity, max_complexity = 0, 0
         else:
-            average_complexity = sum(complexity_dict[obj]['complexity'] for obj in complexity_dict)/len(complexity_dict)
-            max_complexity = max(complexity_dict[obj]['complexity'] for obj in complexity_dict)
+            average_complexity = sum(
+                complexity_dict[obj]['complexity'] for obj in complexity_dict)/len(complexity_dict)
+            max_complexity = max(
+                complexity_dict[obj]['complexity'] for obj in complexity_dict)
 
         return {
             'average': average_complexity,
@@ -474,7 +480,8 @@ class CyclomaticComplexityTool:
                 file_complexity[file] = complexity
                 current_max = max(current_max, complexity['max'])
 
-        sorted_complexity = sorted(file_complexity.items(), key=lambda x: x[1][sort_on], reverse=True)
+        sorted_complexity = sorted(
+            file_complexity.items(), key=lambda x: x[1][sort_on], reverse=True)
 
         prune = (
             sorted_complexity[0][1]['max'] >= self.min_max_complexity and
@@ -519,11 +526,11 @@ class CyclomaticComplexityTool:
 class FindUsageTool:
 
     def __init__(
-            self,
-            base_prompt: str,
-            collection: Collection,
-            llm: Callable
-        ):
+        self,
+        base_prompt: str,
+        collection: Collection,
+        llm: Callable
+    ):
         self.collection = collection
         self.llm = llm
         self.base_prompt = base_prompt
@@ -560,12 +567,14 @@ class FindUsageTool:
         for file, source_code in files.items():
             file_imports = cu.get_imports_from_code(source_code)
             if cu.imports_entity(file_imports, importable_object):
-                called_as = cu.import_called_as(file_imports, importable_object)
+                called_as = cu.import_called_as(
+                    file_imports, importable_object)
                 source_without_imports = '\n'.join(
                     line for line in source_code.split('\n')
                     if not re.search(import_pattern, line)
                 )
-                usage_count = sum(source_without_imports.count(call) for call in called_as)
+                usage_count = sum(source_without_imports.count(call)
+                                  for call in called_as)
                 if usage_count > 0:
                     usages[file] = usage_count
 
@@ -657,8 +666,10 @@ class InstallationAndUseTool:
             "documentation regarding the installation and use of the codebase. "
             "README, configuration, environment."
         )
-        doc_files = query_codebase(query, self.collection, n_results=15, where={'type': 'file'})
-        doc_files_uids = [chunk.uid for chunk in doc_files if '..' not in chunk.filepath]
+        doc_files = query_codebase(
+            query, self.collection, n_results=15, where={'type': 'file'})
+        doc_files_uids = [
+            chunk.uid for chunk in doc_files if '..' not in chunk.filepath]
 
         results = query_codebase(
             user_prompt,

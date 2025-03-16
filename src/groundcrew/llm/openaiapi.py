@@ -84,44 +84,10 @@ print(response)
 
 from typing import Callable, Iterable
 from dataclasses import dataclass
+from groundcrew.dataclasses import SystemMessage, UserMessage, AssistantMessage, ToolMessage, ToolCall
 import json
 
 import openai
-
-
-@dataclass(frozen=True)
-class ToolCall:
-    tool_call_id: str
-    tool_type: str
-    function_name: str
-    function_args: dict
-
-
-@dataclass(frozen=True)
-class SystemMessage:
-    content: str
-    role: str = 'system'
-
-
-@dataclass(frozen=True)
-class UserMessage:
-    content: str
-    role: str = 'user'
-
-
-@dataclass(frozen=True)
-class AssistantMessage:
-    content: str
-    tool_calls: list[ToolCall] | None = None
-    role: str = 'assistant'
-
-
-@dataclass(frozen=True)
-class ToolMessage:
-    content: str | None
-    tool_call_id: str
-    role: str = 'tool'
-
 
 Message = SystemMessage | UserMessage | AssistantMessage | ToolMessage
 
@@ -155,7 +121,8 @@ def message_to_dict(message: Message) -> dict:
 
         # Handle lists of tools calls in messages
         if key == 'tool_calls' and value is not None:
-            output_dict[key] = [toolcall_to_dict(tool_call) for tool_call in value]
+            output_dict[key] = [toolcall_to_dict(
+                tool_call) for tool_call in value]
         else:
             output_dict[key] = value
 
@@ -223,9 +190,11 @@ def start_chat(model: str, client: openai.Client) -> Callable:
         start_idx = 1 if isinstance(messages[0], SystemMessage) else 0
         for idx, msg in enumerate(messages[start_idx:]):
             if idx % 2 == 0:
-                assert isinstance(msg, (UserMessage, ToolMessage)), 'expected UserMessage or ToolMessage'
+                assert isinstance(msg, (UserMessage, ToolMessage)
+                                  ), 'expected UserMessage or ToolMessage'
             else:
-                assert isinstance(msg, AssistantMessage), 'expected AssistantMessage'
+                assert isinstance(
+                    msg, AssistantMessage), 'expected AssistantMessage'
 
         input_messages = [message_to_dict(message) for message in messages]
         try:
