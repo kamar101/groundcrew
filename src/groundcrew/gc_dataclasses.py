@@ -1,7 +1,7 @@
 """
-This module contains dataclasses for the GroundCrew project
+
 """
-from typing import Callable, Union, List
+from typing import Callable, Optional, TypedDict, Union, List
 
 import yaml
 
@@ -52,15 +52,14 @@ class Tool:
     name: str
     code: str
     description: str
-    base_prompt: str
     params: dict
     obj: Callable
+    schema: dict
 
     def to_yaml(self):
         data = {
             'name': self.name,
             'description': self.description,
-            'base_prompt': self.base_prompt,
             'params': self.params
         }
         return yaml.dump(
@@ -69,16 +68,15 @@ class Tool:
     def to_string(self):
         output = f'\nTool Name: {self.name}\n'
         output += f'Description: {self.description}\n'
-        output += f'Base Prompt: {self.base_prompt}\n'
         return output
 
 
 @dataclass(frozen=True)
 class ToolCall:
-    tool_call_id: str
-    tool_type: str
     function_name: str
     function_args: dict
+    tool_call_id: Optional[str] = None
+    tool_type: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -103,7 +101,8 @@ class AssistantMessage:
 @dataclass(frozen=True)
 class ToolMessage:
     content: Union[str, None]
-    tool_call_id: str
+    tool_call_id: Optional[str] = None
+    name: Optional[str] = None
     role: str = 'tool'
 
 

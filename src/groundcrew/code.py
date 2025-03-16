@@ -6,7 +6,7 @@ import ast
 from git import Repo
 
 from groundcrew.constants import DEFAULT_EF
-from groundcrew.dataclasses import Chunk
+from groundcrew.gc_dataclasses import Chunk
 from groundcrew.code_utils import get_imports_from_code, import_called_as
 
 opj = os.path.join

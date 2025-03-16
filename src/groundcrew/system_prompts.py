@@ -47,50 +47,105 @@ TOOL_RESPONSE_PROMPT = """If you can answer the complete question, do so using t
 
 CODEQA_PROMPT = "Your answer should only include information that pertains to the question."
 
-TOOL_GPT_PROMPT = """Your task is to take as input a Python `Tool` class and create a description of the `__call__` method in YAML format like the example below. All `Tools` will include a `user_prompt` parameter in the `__call__` method.
+TOOL_GPT_PROMPT = """ Your task is to take as input a Python class (INPUT-FUNCTION) and generate a valid YAML schema for its **__call__** method. 
 
-Instructions:
-- Your output should be formatted exactly like the example
+Follow the below instructions to generate the YAML schema
+
+**Instructions:**
+- Your output should follow the function calling schema provided in the example.
+- REPLACE RESPECTIVE VALUES IN THE EXAMPLE WITH THE CORRECT VALUES.
+- The description should explain the purpose of the function using the **__call__**.
+- All objects must have additionalProperties set to false
+- Your output should utilize elements from the provided class.
 - Your output should be in correct YAML format.
-- The `base_prompt` you generate should instruct the Tool on what its task is
-- `user_prompt` should be excluded when generating the description.
+- EXCLUDE the **user_prompt** parameter when generating the description.
+- EXCLU* method when generating the properites values.
+- EXCLUDE the **llm** method wDE the **base_prompt** parameter when generating the properties values.
+- EXCLUDE the **collection*hen generating the properties values.
+- EXCLUDE the **__init__** parameters when generating the properties values.
 
-Restrictions:
-- DO NOT enclose your answer in TRIPLE BACKTICKS
-- Do not include ```yaml in your answer
+
+**Restrictions:**
+- Only generate the schema for the **__call__** method.
+- Do not include paramaters of the **__init__** method in the properties values.
+- Do not include the **__init__** method in the properties values.
+- Do not include the **user_prompt** properties values.
+- Do not enclose your answer in triple backticks.
+- Do not include ```yaml in your answer.
 - Do not engage in any conversation.
-- Do not include ```yaml in your answer
-- The description should talk about the class as a `Tool` and not mention it being a Python class
-- Do not include anything that isn't valid YAML in your answer
-- Do not include backticks in your answer
-- Do not include ```yaml in your answer
+- Do not include anything that isn't valid YAML in your answer.
+- Do not include backticks in your answer.
 
-Consider:
-- The results will be passed to the yaml.safe_load function in Python, so make sure your output is valid YAML.
+**Considerations:**
+- The results will be passed to the `yaml.safe_load` function in Python, so ensure your output is valid YAML.
+- The user_prompt parameter is not included in the properties values.
+- Always ensure that the output is of the example outpute schema
 
-
-### Example Input ###
+**Example Input:**
 class ToolExample(Tool):
 
     def __init__(self, base_prompt: str, collection, llm):
         """ """
         super().__init__(base_prompt, collection, llm)
 
-    def __call__(self, user_prompt: str, parameter_1: str):
-
+    def __call__(self, user_prompt: str, parameter_1: str, parameter_2: str) -> str:
         # Logic here with parameter_1
-        output = ... # output from database from parameter_1
-
+        output = ...  # output from database from parameter_1
         full_prompt = output + '\n' + self.base_prompt + user_prompt
         return self.llm(full_prompt)
 
-### Example Output ###
-  - name: ToolExample
-    description: This tool takes a user_prompt and parameter_1, does some logic with parameter_1, then uses a large language model to answer the user's question.
-    base_prompt: Your task is to answer the question given the following data. Be descriptive in your answer.
-    params:
-      parameter_1:
-        description: Description of parameter_1
-        type: str
-        required: true
+**Example Output:**
+- type: function
+  function:
+    name: ToolExample
+    description: A dummy tool that takes in two parameters and returns a string.
+    parameters:
+      type: object
+      properties:
+        parameter_1:
+          type: string
+          description: An additional parameter required for processing the user prompt.
+        parameter_2:
+          type: string
+          description: An additional parameter required for processing the user prompt.
+      required:
+        - parameter_1
+        - parameter_2
+      additionalProperties: false
+    strict: true
+
+**Example Input:**
+class WeatherTool(Tool):
+    def __init__(self, base_prompt: str, collection, llm):
+        super().__init__(base_prompt, collection, llm)
+
+    def __call__(self, user_prompt: str, latitude: float, longitude: float) -> str:
+        import requests
+        # Fetch weather data using the provided latitude and longitude
+        response = requests.get(
+            f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}")
+        data = response.json()
+        current_temperature = data['current']['temperature_2m']
+        full_prompt = f"Current temperature: {current_temperature}°C\n{self.base_prompt}{user_prompt}"
+        return self.llm(full_prompt)
+
+**Example Output:**
+- type: function
+  function:
+    name: WeatherTool
+    description: A tool that fetches weather data using the provided latitude and longitude.
+    parameters:
+      type: object
+      properties:
+        latitude:
+          type: float
+          description: The latitude of the location to fetch weather data for.
+        longitude:
+          type: float
+          description: The longitude of the location to fetch weather data for.
+      required:
+        - latitude
+        - longitude
+      additionalProperties: false
+    strict: true
 """

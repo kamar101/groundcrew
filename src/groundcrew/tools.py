@@ -5,13 +5,15 @@ import os
 import subprocess
 import re
 
-from typing import Callable
+from typing import Annotated, Callable
 
 from thefuzz import process as fuzzprocess
 from chromadb import Collection
 
 from groundcrew import code, system_prompts as sp, code_utils as cu
-from groundcrew.dataclasses import Chunk
+from groundcrew.gc_dataclasses import Chunk
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.json_schema import SkipJsonSchema
 
 
 def query_codebase(
@@ -101,26 +103,32 @@ def fuzzy_match_file_path(
     return top
 
 
-class LintFileTool:
+def get_filename_from_id(id_: str):
     """
-    Interact with a linter using natural language.
-    """
+    Gets the filename from the ID used in the database.
 
-    def __init__(
-            self,
-            base_prompt: str,
-            collection: Collection,
-            llm: Callable,
-            working_dir_path: str):
-        """Constructor."""
-        self.collection = collection
-        self.llm = llm
-        self.base_prompt = base_prompt + sp.LINTER_PROMPT
-        self.working_dir_path = working_dir_path
+    Args:
+        id_ (str): The ID to parse.
+
+    Returns:
+        str: The filename.
+    """
+    return os.path.basename(id_.split('::')[0])
+
+
+class LintFileTool(BaseModel):
+    """
+    Use ruff to lint a file.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    collection: SkipJsonSchema[Collection]
+    working_dir_path: SkipJsonSchema[str]
+    filepath_inexact: str = Field(
+        description="a fuzzy matched path to find an exact file path for a project", default=None)
 
     def __call__(
             self,
-            user_prompt: str,
             filepath_inexact: str) -> str:
         """
         Answer questions using about linting results for a file.
@@ -142,13 +150,7 @@ class LintFileTool:
         if not linter_output:
             linter_output = 'Linter did not find any issues.'
 
-        prompt = (
-            linter_output +
-            '\n### Task ###\n' + self.base_prompt +
-            '\n### Question ###\n' + user_prompt + '\n'
-        )
-
-        return self.llm(prompt)
+        return linter_output
 
     def run_ruff(self, filepath: str) -> str:
         """
@@ -173,45 +175,24 @@ class LintFileTool:
         return '\n'.join(linter_output)
 
 
-def get_filename_from_id(id_: str):
+class SingleDocstringTool(BaseModel):
     """
-    Gets the filename from the ID used in the database.
+    Tool for generating docstrings for a given code snippet, function, or file.
 
-    Args:
-        id_ (str): The ID to parse.
-
-    Returns:
-        str: The filename.
     """
-    return os.path.basename(id_.split('::')[0])
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    collection: SkipJsonSchema[Collection]
+    code: str = Field(
+        default=None, description="The code to generate a docstring for.")
+    filename: str = Field(
+        default=None, description="A filename to query and generate docstrings for all functions within the file.")
+    function_name: str = Field(
+        default=None, description="The name of the function to generate a docstring for.")
 
-
-class SingleDocstringTool:
-    """
-    """
-
-    def __init__(self, base_prompt: str, collection: Collection, llm: Callable):
-        """
-        Initialize the SingleDocstringTool with a base prompt, a code
-        collection, and a language model.
-
-        Args:
-            base_prompt (str): The base prompt to prepend to all queries.
-            collection (Collection): The code collection or database to query
-            for code-related information.
-            llm (Callable): The language model to use for generating
-            code-related responses.
-        """
-        self.base_prompt = base_prompt
-        self.collection = collection
-        self.llm = llm
-
-        # Adding additional instructions
-        self.base_prompt = base_prompt + sp.DOCSTRING_PROMPT
+    # Adding additional instructions
 
     def __call__(
             self,
-            user_prompt: str,
             code: str,
             filename: str,
             function_name: str) -> str:
@@ -254,8 +235,7 @@ class SingleDocstringTool:
         function_code = self._get_function_code(
             all_ids, filename, function_name, code, context)
 
-        prompt = function_code + '\n### Task ###\n' + self.base_prompt + '\n'
-        return self.llm(prompt)
+        return function_code
 
     def _determine_context(
             self, code: str, filename: str, function_name: str) -> str:
@@ -328,28 +308,18 @@ class SingleDocstringTool:
         return '::' in id_ and function_name in id_
 
 
-class CodebaseQATool:
+class CodebaseQATool(BaseModel):
     """
     Tool for querying a codebase and generating responses using a language
     model.  Inherits from ToolBase and implements the abstract methods for
     specific codebase querying functionality.
     """
-
-    def __init__(self, base_prompt: str, collection: Collection, llm: Callable):
-        """
-        Initialize the CodebaseQATool with a base prompt, a code collection,
-        and a language model.
-
-        Args:
-            base_prompt (str): The base prompt to prepend to all queries.
-            collection (Collection): The code collection or database to query
-            for code-related information.
-            llm (Callable): The language model to use for generating
-            code-related responses.
-        """
-        self.base_prompt = base_prompt + sp.CODEQA_PROMPT
-        self.collection = collection
-        self.llm = llm
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    collection: SkipJsonSchema[Collection]
+    user_prompt: str = Field(
+        default=None, description="The prompt to query the codebase.")
+    include_code: bool = Field(
+        default=False, description="Flag to include code in the response.")
 
     def __call__(self, user_prompt: str, include_code: bool) -> str:
         """
@@ -369,32 +339,23 @@ class CodebaseQATool:
             prompt += code.format_chunk(chunk, include_text=include_code)
             prompt += '--------\n\n'
 
-        prompt += self.base_prompt + '\n### Question ###\n'
-        prompt += f'{user_prompt}\n\n'
-
-        return self.llm(prompt)
+        return prompt
 
 
-class CyclomaticComplexityTool:
+class CyclomaticComplexityTool(BaseModel):
     """
     Tool for computing the cyclomatic complexity of a codebase.
     """
-
-    def __init__(
-        self,
-        base_prompt: str,
-        collection: Collection,
-        llm: Callable,
-        min_max_complexity: int = 11
-    ):
-        self.collection = collection
-        self.llm = llm
-        self.base_prompt = base_prompt
-        self.min_max_complexity = min_max_complexity
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    collection: SkipJsonSchema[Collection]
+    min_max_complexity: SkipJsonSchema[Collection] = 11
+    filepath_inexact: str = Field(
+        default='none', description="A filepath explicitly requested by the user.")
+    sort_on: str = Field(
+        default='max', description="Sort the results by the average or max complexity of the file.")
 
     def __call__(
         self,
-        user_prompt: str,
         filepath_inexact: str = 'none',
         sort_on: str = 'max'
     ) -> str:
@@ -435,14 +396,7 @@ class CyclomaticComplexityTool:
             return 'The sort_on parameter passed to CyclomaticComplexityTool must be "average" or "max".'
 
         complexity_summary_str = self.complexity_analysis(files, sort_on)
-
-        prompt = (
-            complexity_summary_str +
-            '\n### Task ###\n' + self.base_prompt +
-            '\n### Question ###\n' + user_prompt + '\n'
-        )
-
-        return self.llm(prompt)
+        return complexity_summary_str
 
     @staticmethod
     def __get_complexity(source_code: str) -> dict[str, dict]:
@@ -523,19 +477,16 @@ class CyclomaticComplexityTool:
         return summary_str
 
 
-class FindUsageTool:
+class FindUsageTool(BaseModel):
+    """
+    Tool for finding the usage of a given importable object in a codebase.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    collection: SkipJsonSchema[Collection]
+    importable_object: str = Field(
+        default=None, description="The importable object to find usage for (name of a module, function, class, or variable)")
 
-    def __init__(
-        self,
-        base_prompt: str,
-        collection: Collection,
-        llm: Callable
-    ):
-        self.collection = collection
-        self.llm = llm
-        self.base_prompt = base_prompt
-
-    def __call__(self, user_prompt: str, importable_object: str) -> str:
+    def __call__(self, importable_object: str) -> str:
         """Answer questions using about the usage of a given importable object.
 
         The importable_object should be the name of a module, function, class, or
@@ -550,12 +501,10 @@ class FindUsageTool:
 
         prompt = (
             f'Usage summary for {importable_object} (filename: usage count):\n' +
-            self.summarize_usage(usage) +
-            '\n### Task ###\n' + self.base_prompt +
-            '\n### Question ###\n' + user_prompt + '\n'
+            self.summarize_usage(usage)
         )
 
-        return self.llm(prompt)
+        return prompt
 
     def get_usage(self, importable_object: str) -> dict[str, int]:
         """Get the usage of an entity from a package/module."""
@@ -592,26 +541,18 @@ class FindUsageTool:
         return summary_str
 
 
-class GetFileContentsTool:
+class GetFileContentsTool(BaseModel):
     """
     Interact with the contents of a specific file using natural language.
     """
-
-    def __init__(
-            self,
-            base_prompt: str,
-            collection: Collection,
-            llm: Callable,
-            working_dir_path: str):
-        """Constructor."""
-        self.collection = collection
-        self.llm = llm
-        self.base_prompt = base_prompt
-        self.working_dir_path = working_dir_path
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    collection: SkipJsonSchema[Collection]
+    working_dir_path: SkipJsonSchema[str]
+    filepath_inexact: str = Field(
+        default=None, description="A fuzzy matched path to find an exact file path for a project.")
 
     def __call__(
             self,
-            user_prompt: str,
             filepath_inexact: str) -> str:
         """
         Answer questions about a specific file.
@@ -638,23 +579,16 @@ class GetFileContentsTool:
         return output
 
 
-class InstallationAndUseTool:
+class InstallationAndUseTool(BaseModel):
     """
     This tool answers questions about the installation and execution of
-    the codebase by querying for documentation files.
+    the codebase.
     """
-
-    def __init__(
-            self,
-            base_prompt: str,
-            collection: Collection,
-            llm: Callable,
-            working_dir_path: str):
-        """Constructor."""
-        self.collection = collection
-        self.llm = llm
-        self.base_prompt = base_prompt
-        self.working_dir_path = working_dir_path
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    collection: SkipJsonSchema[Collection]
+    working_dir_path: SkipJsonSchema[str]
+    user_prompt: str = Field(
+        default=None, description="The prompt to query the codebase.")
 
     def __call__(self, user_prompt: str) -> str:
         """Run the tool.
@@ -677,12 +611,8 @@ class InstallationAndUseTool:
             where={'id': {'$in': doc_files_uids}}
         )
 
-        prompt = self.base_prompt + '\n\n'
         for chunk in results:
             prompt += f'### Contents of file {chunk.filepath} ###\n'
             prompt += chunk.text + '\n\n'
 
-        prompt += self.base_prompt + '\n### Question ###\n'
-        prompt += f'{user_prompt}\n\n'
-
-        return self.llm(prompt)
+        return prompt

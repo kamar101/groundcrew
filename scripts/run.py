@@ -16,7 +16,7 @@ from chromadb import Collection
 from groundcrew import system_prompts as sp, utils
 from groundcrew.code import extract_python_from_file, init_db
 from groundcrew.agent import Agent
-from groundcrew.dataclasses import Config
+from groundcrew.gc_dataclasses import Config
 
 opj = os.path.join
 CLASS_NODE_TYPE = ast.ClassDef
@@ -233,11 +233,11 @@ def main(config: str, model: str, prompts_file: str | None):
         llm,
         os.path.expanduser(config.repository)
     )
-    utils.save_tools_to_yaml(tools, tools_filepath)
+    tool_list = utils.save_tools_to_yaml(tools, tools_filepath)
 
     # The agent LLM is a chat LLM that takes a list of messages as input and
     # returns a message
-    agent_chat_llm = utils.build_llm_chat_client(model)
+    agent_chat_llm = utils.build_llm_chat_client(model, tool_list)
     agent = Agent(config, collection, agent_chat_llm, tools)
 
     # Prompts file was provided for testing
