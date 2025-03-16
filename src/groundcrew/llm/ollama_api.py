@@ -2,12 +2,10 @@
 Wrappers for Ollama API with support for local models.
 
 This code closely mirrors the OpenAI API wrapper code, but uses Ollama.
-It defines data structures for messages and tool calls, and provides helper
-functions to interact with the Ollama client.
 """
 
 from typing import Callable, Iterable, List, Union
-from groundcrew.dataclasses import SystemMessage, UserMessage, AssistantMessage, ToolMessage, ToolCall
+from groundcrew.gc_dataclasses import SystemMessage, UserMessage, AssistantMessage, ToolMessage, ToolCall
 import json
 
 # Assume an 'ollama' package exists that provides a client interface similar to OpenAI.
@@ -37,7 +35,7 @@ def toolcall_to_dict(tool_call: ToolCall) -> dict:
         'type': 'function',
         'function': {
             'name': tool_call.function_name,
-            'arguments': json.dumps(tool_call.function_args)
+            'arguments': tool_call.function_args
         }
     }
 
@@ -97,19 +95,18 @@ def message_from_api_response(response: dict) -> AssistantMessage:
     }
     """
 
-    completion = response['message']
-    tool_calls = None
-    if 'tool_calls' in completion and completion['tool_calls'] is not None:
+    completion = response.message
+    if completion.tool_calls is not None:
         tool_calls = [
             ToolCall(
-                tc['id'],
-                tc['type'],
-                tc['function']['name'],
-                json.loads(tc['function']['arguments'])
-            )
-            for tc in completion['tool_calls']
+                tool_call.function.name,
+                tool_call.function.arguments)
+            for tool_call in completion.tool_calls
         ]
-    return AssistantMessage(completion['content'], tool_calls)
+    else:
+        tool_calls = None
+
+    return AssistantMessage(completion.content, tool_calls)
 
 
 def start_chat(model: str, client: ollama.Client) -> Callable:

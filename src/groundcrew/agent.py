@@ -11,7 +11,7 @@ from yaspin.core import Yaspin
 from chromadb import Collection
 
 from groundcrew import agent_utils as autils, system_prompts as sp, utils
-from groundcrew.dataclasses import Colors, Config, Tool
+from groundcrew.gc_dataclasses import Colors, Config, Tool, ToolMessage
 from groundcrew.llm.openaiapi import SystemMessage, UserMessage, AssistantMessage, Message
 # from groundcrew.llm.ollama_api import SystemMessage, UserMessage, AssistantMessage, Message
 
@@ -128,24 +128,23 @@ class Agent:
 
             self.interact(user_prompt)
 
-    def run_tool(self, parsed_response: dict[str, str | list[str]]) -> str:
+    def run_tool(self, llm_response: AssistantMessage) -> str:
         """
         Runs the Tool selected by the LLM.
 
         Args:
-            parsed_response (Dict): A dictionary containing the parsed data
-            from LLM.
+            llm_response (Dict): The response from LLM.
 
         Returns:
             tool_response (str): The response from the tool.
         """
 
-        tool_selection = parsed_response['Tool']
+        tool_selection = llm_response.tool_calls[0].function_name
         if tool_selection not in self.tools:
             return 'The LLM tried to call a function that does not exist.'
 
         tool = self.tools[tool_selection]
-        tool_args = self.extract_params(parsed_response)
+        tool_args = self.extract_params(llm_response)
 
         expected_tool_args = inspect.signature(tool.obj).parameters
 
@@ -166,10 +165,11 @@ class Agent:
 
         if self.config.debug:
             print(f'Please standby while I run the tool {tool.name}...')
-            print(f'("{parsed_response["Tool query"]}", {tool_args})')
+            print(f'("Tool Args": {tool_args})')
             print()
 
-        return tool.obj(parsed_response['Tool query'], **tool_args)
+        tool_response = tool.obj(**tool_args)
+        return tool_response
 
     def interact_functional(self, user_prompt: str) -> str:
         """
@@ -209,10 +209,7 @@ class Agent:
         if self.spinner is not None:
             self.spinner.stop()
 
-        system_prompt = sp.AGENT_PROMPT + '\n\n' + sp.CHOOSE_TOOL_PROMPT + '\n\n'
-        system_prompt += '### Tools ###\n'
-        for tool in self.tools.values():
-            system_prompt += tool.to_yaml() + '\n\n'
+        system_prompt = sp.AGENT_PROMPT
 
         # the message history involved in solving the current user_prompt
         self.dispatch_messages = []
@@ -224,9 +221,8 @@ class Agent:
 
             self.spinner = yaspin(text='Thinking...', color='green')
             self.spinner.start()
-
             # Choose tool or get a response
-            select_tool_response = self.llm(
+            select_tool_response: Message = self.llm(
                 [SystemMessage(system_prompt)] +
                 self.messages +
                 self.dispatch_messages)
@@ -234,81 +230,48 @@ class Agent:
             self.dispatch_messages.append(select_tool_response)
             self.spinner.stop()
 
-            # Parse the tool selection response
-            parsed_select_tool_response = autils.parse_response(
-                select_tool_response.content,
-                keywords=['Response', 'Reason', 'Tool', 'Tool query']
-            )
-            # No Tool selected - this should be an answer
-            if 'Tool' not in parsed_select_tool_response:
+
+            if select_tool_response.role != 'assistant': # An error occurred
                 break
+            elif select_tool_response.role == 'assistant' and select_tool_response.tool_calls is None:
+                print('No tool selected')
+                break
+            else:
+                print('Tool selected:',
+                      select_tool_response.tool_calls[0].function_name) # Strict Mode (One tool at a time)
 
             self.spinner = yaspin(
-                text='Running ' + parsed_select_tool_response['Tool'],
+                text='Running ' +
+                select_tool_response.tool_calls[0].function_name + '...',
                 color='green'
             )
             self.spinner.start()
 
             # Run Tool
             try:
-                tool_response = self.run_tool(parsed_select_tool_response)
+                tool_response = self.run_tool(select_tool_response)
             except Exception as e:
-                tool_response = ''
-
+                tool_response = 'An error occurred while running the tool: ' + \
+                    str(e)
+                
             self.spinner.stop()
-
-            tool_response_message = 'Tool response\n' + tool_response
-            tool_response_message += user_question + '\n\n'
-            tool_response_message += sp.TOOL_RESPONSE_PROMPT
-            self.dispatch_messages.append(UserMessage(tool_response_message))
+            self.dispatch_messages.append(ToolMessage(
+                tool_call_id=select_tool_response.tool_calls[0].tool_call_id, content=tool_response,
+                name=select_tool_response.tool_calls[0].function_name))
 
     def extract_params(
             self,
-            parsed_data: dict[str, str | list[str]]) -> dict[str, Any]:
+            llm_response: AssistantMessage) -> dict[str, Any]:
         """
         Extract parameters from LLM response
 
         Args:
-        parsed_data (Dict): A dictionary containing the parsed data from LLM.
+        llm_response (AssistantMessage): The response from LLM.
 
         Returns:
-            tool (Tool): The tool extracted from available tools based on
-            'Tool' key in parsed_data.
-            args (Dict): A dictionary of arguments to be passed to the
-            function.
+            args (Dict): A dictionary of arguments to be passed to the function.
         """
-
-        param_prefix = 'Parameter_'
-
-        # Create a dictionary of arguments to be passed to the function
-        args = {}
-        for key, value in parsed_data.items():
-            if key.startswith(param_prefix):
-
-                # Value does not contain name | value | type
-                if len(value) != 3:
-                    continue
-
-                param_name = value[0]
-                param_value = value[1]
-                param_type = value[2].strip(' ')
-
-                # Cast the values if needed
-                if param_type == 'int':
-                    param_value = int(param_value)
-                elif param_type == 'float':
-                    param_value = float(param_value)
-                elif param_type == 'bool':
-                    if param_value.lower() == 'true':
-                        param_value = True
-                    elif param_value.lower() == 'false':
-                        param_value = False
-                    else:
-                        param_value = None
-
-                args[param_name.replace(' ', '')] = param_value
-
-        return args
+        return llm_response.tool_calls[0].function_args
 
     def run_with_prompts(self, prompts: list[str]):
         """

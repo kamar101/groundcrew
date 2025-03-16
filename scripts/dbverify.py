@@ -9,7 +9,7 @@ import chromadb
 import click
 import yaml
 
-from groundcrew.dataclasses import Config
+from groundcrew.gc_dataclasses import Config
 from groundcrew import code
 from groundcrew import constants
 

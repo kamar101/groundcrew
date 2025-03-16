@@ -16,7 +16,7 @@ import pickle
 import tqdm
 import yaml
 
-from groundcrew.dataclasses import Config
+from groundcrew.gc_dataclasses import Config
 from groundcrew import agent
 from groundcrew import constants
 from groundcrew import evaluation as ev

@@ -84,7 +84,7 @@ print(response)
 
 from typing import Callable, Iterable
 from dataclasses import dataclass
-from groundcrew.dataclasses import SystemMessage, UserMessage, AssistantMessage, ToolMessage, ToolCall
+from groundcrew.gc_dataclasses import SystemMessage, UserMessage, AssistantMessage, ToolMessage, ToolCall
 import json
 
 import openai
@@ -165,10 +165,10 @@ def message_from_api_response(response: dict) -> AssistantMessage:
     if completion.tool_calls is not None:
         tool_calls = [
             ToolCall(
-                tool_call.id,
-                tool_call.type,
-                tool_call.function.name,
-                json.loads(tool_call.function.arguments))
+                tool_call_id=tool_call.id,
+                tool_type=tool_call.type,
+                function_name=tool_call.function.name,
+                function_args=json.loads(tool_call.function.arguments))
             for tool_call in completion.tool_calls
         ]
     else:
@@ -205,8 +205,8 @@ def start_chat(model: str, client: openai.Client) -> Callable:
                 **kwargs
             )
             return message_from_api_response(response)
-        except openai.APIError:
-            return UserMessage('There was an API error.  Please try again.')
+        except openai.APIError as e:
+            return UserMessage('There was an API error.  Please try again. ' + str(e))
 
     return chat_func
 

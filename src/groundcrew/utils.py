@@ -20,7 +20,7 @@ from pygments.formatters import Terminal256Formatter
 from groundcrew import constants, system_prompts as sp
 from groundcrew.llm import ollama_api, openaiapi
 from groundcrew.llm.openaiapi import Message
-from groundcrew.dataclasses import Tool
+from groundcrew.gc_dataclasses import Tool
 
 
 def highlight_code_helper(text: str, colorscheme: str) -> str:
@@ -75,7 +75,7 @@ def highlight_code(text: str, colorscheme: str) -> str:
 
 
 def build_llm_chat_client(
-        model: str = constants.DEFAULT_MODEL) -> Callable[[list[Message]], str]:
+        model: str = constants.DEFAULT_MODEL, tools: list[dict[str, Any]] = None) -> Callable[[list[Message]], str]:
     """Make an LLM client that accepts a list of messages and returns a response."""
     if 'gpt' in model:
         client = openaiapi.get_openaiai_client()
@@ -85,7 +85,7 @@ def build_llm_chat_client(
         chat_session = ollama_api.start_chat(model, client)
 
     def chat(messages: list[Message]) -> Message:
-        return chat_session(messages)
+        return chat_session(messages, tools=tools)
     return chat
 
 
@@ -151,7 +151,7 @@ def setup_and_load_yaml(filepath: str, key: str) -> dict[str, dict[str, Any]]:
     if data is None:
         return {}
 
-    return {item['name']: item for item in data[key]}
+    return {item['function']['name']: item for item in data[key]}
 
 
 def setup_tools(
@@ -201,35 +201,33 @@ def setup_tools(
                 # Description already generated and in yaml file, so load it.
                 if node.name in tool_descriptions:
                     print(f'Loading description for {node.name}...')
-                    tool_yaml = yaml.dump(
+                    tool_json_schema = yaml.dump(
                         tool_descriptions[node.name], sort_keys=False)
 
                 else:
                     print(f'Generating description for {node.name}...')
 
-                    # Generate description of the Tool in YAML format
-                    tool_yaml = convert_tool_str_to_yaml(tool_code, llm)
+                #     # Generate description of the Tool in YAML format
+                #     tool_yaml = convert_tool_str_to_yaml(tool_code, llm)
+                #     print("Tool YAML:", tool_yaml)
 
-                    # In case the LLM put ```yaml at the beginning and and ```
-                    # at the end
-                    if '```yaml' in tool_yaml:
-                        tool_yaml = '\n'.join(tool_yaml[1:-1])
+                # # Convert YAML to a dictionary
+                # tool_info_dict = yaml.safe_load(tool_yaml)
+                # if isinstance(tool_info_dict, list):
+                #     tool_info_dict = tool_info_dict[0]
 
-                # Convert YAML to a dictionary
-                tool_info_dict = yaml.safe_load(tool_yaml)
-                if isinstance(tool_info_dict, list):
-                    tool_info_dict = tool_info_dict[0]
-
-                # Remove the user_prompt from the params in case the LLM added
-                # it
-                if 'user_prompt' in tool_info_dict['params']:
-                    del tool_info_dict['params']['user_prompt']
-
-                params['base_prompt'] = tool_info_dict['base_prompt']
+                # # Remove the user_prompt from the parameters in case the LLM added it
+                #
+                # if 'user_prompt' in tool_args:
+                #     del tool_args['user_prompt']
 
                 tool_constructor = getattr(module, node.name)
+                tool_json_schema = tool_constructor.model_json_schema()  # get schema using pydantic
+                tool_args = tool_json_schema['properties']
+
                 tool_params = inspect.signature(tool_constructor).parameters
 
+                # Get the expected arguments for the tool constructor
                 args = {}
                 for param_name, value in params.items():
                     if param_name in tool_params:
@@ -237,11 +235,12 @@ def setup_tools(
 
                 # Create an instance of a tool object
                 tool_obj = tool_constructor(**args)
+                expected_tool_args = inspect.signature(tool_obj).parameters
 
-                # Check that the tool object has the correct signature
-                tool_err = 'Tool must have a user_prompt parameter'
-                assert 'user_prompt' in inspect.signature(
-                    tool_obj).parameters, tool_err
+                # Filter out incorrect parameters for the tool object
+                for param_name in tool_args:
+                    if param_name not in expected_tool_args:
+                        del tool_args[param_name]
 
                 tool_err = f'Tool {tool_obj} must return a string'
                 assert inspect.signature(
@@ -251,12 +250,48 @@ def setup_tools(
                 tools[node.name] = Tool(
                     name=node.name,
                     code=tool_code,
-                    description=tool_info_dict['description'],
-                    base_prompt=tool_info_dict['base_prompt'],
-                    params=tool_info_dict['params'],
+                    description=tool_json_schema['description'],
+                    params=tool_args,
+                    schema=parse_tool_schema(tool_json_schema),
                     obj=tool_obj)
 
     return tools
+
+
+def parse_tool_schema(tool_schema: dict[str, Any]) -> dict[str, Any]:
+    """
+    Parse the schema of a tool into a dictionary format for function calling.
+
+    Args:
+        tool (Tool): The tool to parse.
+    Returns:
+        dict: The schema of the tool in dictionary
+    """
+    parsed_schema = {}
+    description = tool_schema['description']
+    title = tool_schema['title']
+    properties = tool_schema['properties']
+
+    # Remove default key from schema
+    for param, value in properties.items():
+        if 'default' in value:
+            del value['default']
+    # All fields in the scema are required. Optional should be skipped in the Tool class
+    required = [property_name for property_name in properties]
+
+    parsed_schema['type'] = "function"  # Constant for now
+    parsed_schema['function'] = {
+        'name': title,
+        'description': description,
+        'parameters': {
+            'type': 'object',
+            'properties': properties,
+            'required': required,
+            'additionalProperties': False
+        },
+        'strict': True
+    }
+    return parsed_schema
 
 
 def convert_tool_str_to_yaml(function_str: str, llm: Callable) -> str:
@@ -269,10 +304,10 @@ def convert_tool_str_to_yaml(function_str: str, llm: Callable) -> str:
     Returns:
         str: The YAML representation of the given function string.
     """
-    return llm(sp.TOOL_GPT_PROMPT + '\n\n' + function_str)
+    return llm(sp.TOOL_GPT_PROMPT + '\n\n----INPUT-FUNCTION---\n\n' + function_str)
 
 
-def save_tools_to_yaml(tools: dict[str, Tool], filename: str) -> None:
+def save_tools_to_yaml(tools: dict[str, Tool], filename: str) -> list[dict[str, Any]]:
     """
     Converts a dictionary of tools into YAML format and saves it to a file.
 
@@ -286,14 +321,7 @@ def save_tools_to_yaml(tools: dict[str, Tool], filename: str) -> None:
     """
 
     # Convert the tools dictionary into a list of dictionaries
-    tools_list = []
-    for tool in tools.values():
-        tool_dict = {}
-        tool_dict['name'] = tool.name
-        tool_dict['description'] = tool.description
-        tool_dict['base_prompt'] = tool.base_prompt
-        tool_dict['params'] = tool.params
-        tools_list.append(tool_dict)
+    tools_list = [tool.schema for tool in tools.values()]
 
     # Wrap the list in a dictionary with the key 'tools'
     data = {'tools': tools_list}
@@ -302,3 +330,4 @@ def save_tools_to_yaml(tools: dict[str, Tool], filename: str) -> None:
     with open(filename, 'w') as file:
         yaml.dump(data, file, default_flow_style=False, sort_keys=False)
     print(f'Saved {filename}\n')
+    return tools_list
